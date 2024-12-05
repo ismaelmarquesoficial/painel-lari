@@ -2,27 +2,22 @@ import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const res = NextResponse.next()
+  const supabase = createMiddlewareClient({ req: request, res })
 
-  // Rotas públicas que não precisam de autenticação
-  if (['/login', '/register'].includes(request.nextUrl.pathname)) {
-    return res
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
+  // Redirecionar para login se tentar acessar dashboard sem autenticação
+  if (request.nextUrl.pathname.startsWith('/dashboard') && !session) {
+    return NextResponse.redirect(new URL('/login', request.url))
   }
 
   return res
 }
 
-// Configurar quais rotas o middleware deve processar
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
-  ],
+  matcher: ['/dashboard/:path*']
 } 

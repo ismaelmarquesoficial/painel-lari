@@ -1,58 +1,83 @@
 'use client'
 
-import { useState, FormEvent } from 'react'
+import { useState, FormEvent, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '@/lib/supabase'
 
 export default function LoginPage() {
   const router = useRouter()
+  const { user, loading } = useAuth()
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   })
-  const [loading, setLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
+  // Redirecionar se já estiver autenticado
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace('/dashboard')
+    }
+  }, [user, loading, router])
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    setLoading(true)
+    setIsLoading(true)
     setError('')
     setMessage('')
 
     if (!formData.email || !formData.password) {
       setError('Por favor, preencha todos os campos')
-      setLoading(false)
+      setIsLoading(false)
       return
     }
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData)
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
       })
 
-      const data = await response.json()
+      if (error) throw error
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Erro ao fazer login')
+      // Tentar criar/atualizar o perfil após login
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert([
+          {
+            id: data.user.id,
+            email: data.user.email,
+            role: 'client',
+            name: data.user.user_metadata?.name || ''
+          }
+        ])
+
+      if (profileError) {
+        console.error('Erro ao criar perfil:', profileError)
       }
 
       setMessage('Login realizado com sucesso! Redirecionando...')
-      
-      setTimeout(() => {
-        router.push('/dashboard')
-      }, 1000)
+      router.replace('/dashboard')
 
     } catch (err) {
       console.error('Erro:', err)
       setError(err instanceof Error ? err.message : 'Erro ao fazer login')
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
+  }
+
+  // Mostrar loading enquanto verifica autenticação
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg">Carregando...</div>
+      </div>
+    )
   }
 
   return (
@@ -114,10 +139,10 @@ export default function LoginPage() {
           <div>
             <button
               type="submit"
-              disabled={loading}
+              disabled={isLoading}
               className="group relative flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:bg-blue-400"
             >
-              {loading ? 'Entrando...' : 'Entrar'}
+              {isLoading ? 'Entrando...' : 'Entrar'}
             </button>
           </div>
 
